@@ -1598,11 +1598,14 @@ function computeExpirationForFiber(currentTime: ExpirationTime, fiber: Fiber) {
   let expirationTime;
   if ((fiber.mode & ConcurrentMode) === NoContext) {
     // Outside of concurrent mode, updates are always synchronous.
+    // 同步模式
     expirationTime = Sync;
   } else if (isWorking && !isCommitting) {
     // During render phase, updates expire during as the current render.
+    // 渲染阶段  但是没提交
     expirationTime = nextRenderExpirationTime;
   } else {
+    // 根据任务，再分别计算时间
     switch (priorityLevel) {
       case ImmediatePriority:
         expirationTime = Sync;
@@ -1752,6 +1755,8 @@ function scheduleWorkToRoot(fiber: Fiber, expirationTime): FiberRoot | null {
   }
 
   // Update the source fiber's expiration time
+  // 如果当前fiber节点的时间，小于传入的时间
+  // 那么覆盖到当前节点
   if (fiber.expirationTime < expirationTime) {
     fiber.expirationTime = expirationTime;
   }
@@ -1760,6 +1765,8 @@ function scheduleWorkToRoot(fiber: Fiber, expirationTime): FiberRoot | null {
     alternate.expirationTime = expirationTime;
   }
   // Walk the parent path to the root and update the child expiration time.
+  // 开始更新父链上的每一个childExpirationTime
+  // alternate是工作的时候用到的
   let node = fiber.return;
   let root = null;
   if (node === null && fiber.tag === HostRoot) {
@@ -1849,6 +1856,7 @@ export function warnIfNotCurrentlyBatchingInDev(fiber: Fiber): void {
 }
 
 function scheduleWork(fiber: Fiber, expirationTime: ExpirationTime) {
+  // 找到根节点，并且更新链上每个childExpirationTime
   const root = scheduleWorkToRoot(fiber, expirationTime);
   if (root === null) {
     if (__DEV__) {
@@ -1867,12 +1875,15 @@ function scheduleWork(fiber: Fiber, expirationTime: ExpirationTime) {
     return;
   }
 
+  // isWorking表示当前是否正在工作，在开始renderRoot和commitRoot的时候会设置为 true
+  // nextRenderExpirationTime 判断接下来是否有其他任务，这里判断NoWork，也就是目前没事了
   if (
     !isWorking &&
     nextRenderExpirationTime !== NoWork &&
     expirationTime > nextRenderExpirationTime
   ) {
     // This is an interruption. (Used for performance tracking.)
+    // 清空任务 重置一些全局变量
     interruptedBy = fiber;
     resetStack();
   }
@@ -1885,12 +1896,14 @@ function scheduleWork(fiber: Fiber, expirationTime: ExpirationTime) {
     // ...unless this is a different root than the one we're rendering.
     nextRoot !== root
   ) {
+    // 发起work
     const rootExpirationTime = root.expirationTime;
     requestWork(root, rootExpirationTime);
   }
   if (nestedUpdateCount > NESTED_UPDATE_LIMIT) {
     // Reset this back to zero so subsequent updates don't throw.
     nestedUpdateCount = 0;
+    // 这里应该就是死循环的报警
     invariant(
       false,
       'Maximum update depth exceeded. This can happen when a ' +
@@ -2057,8 +2070,11 @@ function requestCurrentTime() {
   // But the scheduler time can only be updated if there's no pending work, or
   // if we know for certain that we're not in the middle of an event.
 
+  // 这个isRendering只有在performWorkOnRoot的时候才会被设置为true
+  // 表示进入渲染阶段，这是包含render和commit阶段的。
   if (isRendering) {
     // We're already rendering. Return the most recently read time.
+    // 正在渲染的话，就取这次渲染设置的时间
     return currentSchedulerTime;
   }
   // Check if there's pending work.
@@ -2069,6 +2085,7 @@ function requestCurrentTime() {
   ) {
     // If there's no pending work, or if the pending work is offscreen, we can
     // read the current time without risk of tearing.
+    // 啥事没有的时候，重新计算一下，也就是0
     recomputeCurrentRendererTime();
     currentSchedulerTime = currentRendererTime;
     return currentSchedulerTime;
@@ -2362,7 +2379,9 @@ function performWorkOnRoot(
   isRendering = true;
 
   // Check if this is async work or sync/expired work.
+  // isYieldy true 异步  false 同步
   if (!isYieldy) {
+    // 处理同步任务
     // Flush work without yielding.
     // TODO: Non-yieldy work does not necessarily imply expired work. A renderer
     // may want to perform some work without yielding, but also without
@@ -2390,6 +2409,7 @@ function performWorkOnRoot(
       }
     }
   } else {
+    // 处理异步任务
     // Flush async work.
     let finishedWork = root.finishedWork;
     if (finishedWork !== null) {

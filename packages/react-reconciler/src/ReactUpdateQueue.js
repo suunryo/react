@@ -192,13 +192,13 @@ function cloneUpdateQueue<State>(
 
 export function createUpdate(expirationTime: ExpirationTime): Update<*> {
   return {
-    expirationTime: expirationTime,
+    expirationTime: expirationTime, // 超时
 
     tag: UpdateState,
-    payload: null,
+    payload: null, // 这次更新对应的React.Element
     callback: null,
 
-    next: null,
+    next: null, // 下一次更新
     nextEffect: null,
   };
 }

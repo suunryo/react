@@ -367,15 +367,20 @@ function ReactRoot(
   isConcurrent: boolean,
   hydrate: boolean,
 ) {
+  // 创建React Fiber Root
+  // isConcurrent 之前已被设置为true
   const root = createContainer(container, isConcurrent, hydrate);
+  // this就是_reactRootContainer
   this._internalRoot = root;
 }
+// 这里就是ReactDom.render，真正开始的地方
+// 可以看出，无论是初始化还是更新，都是调用updateContainer
 ReactRoot.prototype.render = function(
-  children: ReactNodeList,
+  children: ReactNodeList, // <App />
   callback: ?() => mixed,
 ): Work {
-  const root = this._internalRoot;
-  const work = new ReactWork();
+  const root = this._internalRoot; // 上面的函数createContainer创建的FiberRoot
+  const work = new ReactWork(); // 暂时不看 就执行callback
   callback = callback === undefined ? null : callback;
   if (__DEV__) {
     warnOnInvalidCallback(callback, 'render');
@@ -383,6 +388,7 @@ ReactRoot.prototype.render = function(
   if (callback !== null) {
     work.then(callback);
   }
+  // createContainer之后，开始真的updateContainer了
   updateContainer(children, root, null, work._onCommit);
   return work;
 };
@@ -533,7 +539,9 @@ function legacyCreateRootFromDOMContainer(
     }
   }
   // Legacy roots are not async by default.
+  // 就是标记一下，初始化是个同步的过程
   const isConcurrent = false;
+  // 这里最终会返回一个FiberRoot，最终挂载到DomContainer
   return new ReactRoot(container, isConcurrent, shouldHydrate);
 }
 
@@ -552,11 +560,13 @@ function legacyRenderSubtreeIntoContainer(
   // member of intersection type." Whyyyyyy.
   let root: Root = (container._reactRootContainer: any);
   if (!root) {
+    // 初始化过程
     // Initial mount
     root = container._reactRootContainer = legacyCreateRootFromDOMContainer(
       container,
       forceHydrate,
     );
+    // 调用最开始render方法传入的callback
     if (typeof callback === 'function') {
       const originalCallback = callback;
       callback = function() {
@@ -577,6 +587,7 @@ function legacyRenderSubtreeIntoContainer(
       }
     });
   } else {
+    // 已经有root
     if (typeof callback === 'function') {
       const originalCallback = callback;
       callback = function() {
@@ -670,6 +681,7 @@ const ReactDOM: Object = {
     );
   },
 
+  // 开始的地方
   render(
     element: React$Element<any>,
     container: DOMContainer,
@@ -688,6 +700,7 @@ const ReactDOM: Object = {
         enableStableConcurrentModeAPIs ? 'createRoot' : 'unstable_createRoot',
       );
     }
+    // 把React Element 渲染到根节点container
     return legacyRenderSubtreeIntoContainer(
       null,
       element,

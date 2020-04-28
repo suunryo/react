@@ -112,8 +112,11 @@ export function createFiberRoot(
 ): FiberRoot {
   // Cyclic construction. This cheats the type system right now because
   // stateNode is any.
+  // 就是创建根节点Fiber，也就是定义好类型
   const uninitializedFiber = createHostRootFiber(isConcurrent);
 
+  // 这个就是_reactRootContainer
+  // enableSchedulerTracing一般都是true
   let root;
   if (enableSchedulerTracing) {
     root = ({

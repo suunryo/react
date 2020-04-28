@@ -223,13 +223,14 @@ function FiberNode(
   mode: TypeOfMode,
 ) {
   // Instance
-  this.tag = tag;
-  this.key = key;
-  this.elementType = null;
-  this.type = null;
+  this.tag = tag; // fiber类型
+  this.key = key; // 我们传入的key
+  this.elementType = null; // 组件类型 html React.Symbol provider .....
+  this.type = null; // 和上面的差不多
   this.stateNode = null;
 
   // Fiber
+  // Fiber的单链表结构
   this.return = null;
   this.child = null;
   this.sibling = null;
@@ -237,10 +238,10 @@ function FiberNode(
 
   this.ref = null;
 
-  this.pendingProps = pendingProps;
-  this.memoizedProps = null;
-  this.updateQueue = null;
-  this.memoizedState = null;
+  this.pendingProps = pendingProps; // 最新props
+  this.memoizedProps = null; // 上一次的props
+  this.updateQueue = null; // 最新的更新
+  this.memoizedState = null; // 上一次的更新
   this.contextDependencies = null;
 
   this.mode = mode;
@@ -252,7 +253,10 @@ function FiberNode(
   this.firstEffect = null;
   this.lastEffect = null;
 
+  // 下面2个是React运行最核心的变量，标记了各种任务的时间
+  // 当前Fiber的任务预计过期时间
   this.expirationTime = NoWork;
+  // 子节点的预计任务时间，子节点更新时，会一次传递赋值到顶层
   this.childExpirationTime = NoWork;
 
   this.alternate = null;
@@ -316,6 +320,10 @@ const createFiber = function(
   mode: TypeOfMode,
 ): Fiber {
   // $FlowFixMe: the shapes are exact here but Flow doesn't like constructors
+  // Flow是Facebook前端的静态代码检查工具
+  // 接下来才是真的开始创建Fiber对象了
+  // 初始化pendingProps, key是null mode 是true
+  // key其实就是我们传给React.Element的 unique key
   return new FiberNode(tag, pendingProps, key, mode);
 };
 
@@ -434,6 +442,7 @@ export function createHostRootFiber(isConcurrent: boolean): Fiber {
     mode |= ProfileMode;
   }
 
+  // HostRoot就是根节点Fiber的Tag
   return createFiber(HostRoot, null, null, mode);
 }
 

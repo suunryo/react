@@ -100,6 +100,7 @@ function getContextForSubtree(
   }
 
   const fiber = getInstance(parentComponent);
+  // 一直会找到ClassComponents  或者FiberRoot
   const parentContext = findCurrentUnmaskedContext(fiber);
 
   if (fiber.tag === ClassComponent) {
@@ -136,9 +137,11 @@ function scheduleRootUpdate(
     }
   }
 
+  // 创建一个Update对象
   const update = createUpdate(expirationTime);
   // Caution: React DevTools currently depends on this property
   // being called "element".
+  // 把React.Element挂载上去
   update.payload = {element};
 
   callback = callback === undefined ? null : callback;
@@ -149,11 +152,14 @@ function scheduleRootUpdate(
         'function. Instead received: %s.',
       callback,
     );
+    // 最开始传的回调
     update.callback = callback;
   }
 
   flushPassiveEffects();
+  // 就是把刚才创建的Update挂载到Fiber的updateQueue上
   enqueueUpdate(current, update);
+  // 转到FiberScheduler
   scheduleWork(current, expirationTime);
 
   return expirationTime;
@@ -188,6 +194,7 @@ export function updateContainerAtExpirationTime(
     container.pendingContext = context;
   }
 
+  // 这里就开始调度了
   return scheduleRootUpdate(current, element, expirationTime, callback);
 }
 
@@ -277,16 +284,19 @@ export function createContainer(
   isConcurrent: boolean,
   hydrate: boolean,
 ): OpaqueRoot {
+  // 啥也没做，指向ReactFiberRoot
   return createFiberRoot(containerInfo, isConcurrent, hydrate);
 }
 
 export function updateContainer(
-  element: ReactNodeList,
-  container: OpaqueRoot,
-  parentComponent: ?React$Component<any, any>,
+  element: ReactNodeList,  // <App />
+  container: OpaqueRoot, // FiberRoot
+  parentComponent: ?React$Component<any, any>, // 初始化的话是null
   callback: ?Function,
 ): ExpirationTime {
+  // FiberRoot
   const current = container.current;
+  // 计算一个expirationTime
   const currentTime = requestCurrentTime();
   const expirationTime = computeExpirationForFiber(currentTime, current);
   return updateContainerAtExpirationTime(
