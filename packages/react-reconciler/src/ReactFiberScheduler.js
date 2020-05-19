@@ -1963,16 +1963,21 @@ function recomputeCurrentRendererTime() {
   currentRendererTime = msToExpirationTime(currentTimeMs);
 }
 
+// 异步任务调度
 function scheduleCallbackWithExpirationTime(
   root: FiberRoot,
   expirationTime: ExpirationTime,
 ) {
   if (callbackExpirationTime !== NoWork) {
+    // 先判断是否有callback在工作
     // A callback is already scheduled. Check its expiration time (timeout).
     if (expirationTime < callbackExpirationTime) {
+      // 当前时间小于这个callbackExpirationTime的话
+      // 不用care，这次时间片的任务可以足够包含当前任务
       // Existing callback has sufficient timeout. Exit.
       return;
     } else {
+      // 现有的任务时间范围不够，取消后再创建一个新的
       if (callbackID !== null) {
         // Existing callback has insufficient timeout. Cancel and schedule a
         // new one.
@@ -1981,13 +1986,17 @@ function scheduleCallbackWithExpirationTime(
     }
     // The request callback timer is already running. Don't start a new one.
   } else {
+    // debug相关？
     startRequestCallbackTimer();
   }
 
+  // 执行到这里，说明当前不在工作
+  // 我们计算一个超时时间，然后调用scheduler模块
   callbackExpirationTime = expirationTime;
   const currentMs = now() - originalStartTimeMs;
   const expirationTimeMs = expirationTimeToMs(expirationTime);
   const timeout = expirationTimeMs - currentMs;
+  // scheduleDeferredCallback 在scheduler包中是scheduleWork
   callbackID = scheduleDeferredCallback(performAsyncWork, {timeout});
 }
 
@@ -2105,6 +2114,7 @@ function requestWork(root: FiberRoot, expirationTime: ExpirationTime) {
   if (isRendering) {
     // Prevent reentrancy. Remaining work will be scheduled at the end of
     // the currently rendering batch.
+    // 翻译一下，防止在渲染的时候，插入新的工作
     return;
   }
 
@@ -2121,6 +2131,7 @@ function requestWork(root: FiberRoot, expirationTime: ExpirationTime) {
   }
 
   // TODO: Get rid of Sync and use current time?
+  // 根据expirationTime，选择调用不同方法
   if (expirationTime === Sync) {
     performSyncWork();
   } else {
@@ -2152,6 +2163,8 @@ function addRootToSchedule(root: FiberRoot, expirationTime: ExpirationTime) {
   }
 }
 
+// 故名思意，找到最高优先级的root
+// 但是一般情况下，我们的react应用应该只有一个fiberRoot
 function findHighestPriorityRoot() {
   let highestPriorityWork = NoWork;
   let highestPriorityRoot = null;
@@ -2257,12 +2270,15 @@ function performAsyncWork() {
 }
 
 function performSyncWork() {
+  // 同步调用
   performWork(Sync, false);
 }
 
+// performWork通过两种方式调用 performSyncWork performAsyncWork 上面的俩函数↑
 function performWork(minExpirationTime: ExpirationTime, isYieldy: boolean) {
   // Keep working on roots until there's no more work, or until there's a higher
   // priority event.
+  // 找到下一个需要操作的root
   findHighestPriorityRoot();
 
   if (isYieldy) {
@@ -2291,6 +2307,7 @@ function performWork(minExpirationTime: ExpirationTime, isYieldy: boolean) {
       currentSchedulerTime = currentRendererTime;
     }
   } else {
+    // 在非异步的情况下，接下去就是循环执行performWorkOnRoot然后再找下一个优先级的root执行
     while (
       nextFlushedRoot !== null &&
       nextFlushedExpirationTime !== NoWork &&
@@ -2380,6 +2397,7 @@ function performWorkOnRoot(
 
   // Check if this is async work or sync/expired work.
   // isYieldy true 异步  false 同步
+  // 区别是否可打断
   if (!isYieldy) {
     // 处理同步任务
     // Flush work without yielding.
@@ -2390,6 +2408,7 @@ function performWorkOnRoot(
     let finishedWork = root.finishedWork;
     if (finishedWork !== null) {
       // This root is already complete. We can commit it.
+      // 表示当前时间切片所有任务完成，可以进行commit了
       completeRoot(root, finishedWork, expirationTime);
     } else {
       root.finishedWork = null;
@@ -2397,11 +2416,15 @@ function performWorkOnRoot(
       // we're about to try rendering again.
       const timeoutHandle = root.timeoutHandle;
       if (timeoutHandle !== noTimeout) {
+        // 如果此前有任务超时，清除之前的超时任务
         root.timeoutHandle = noTimeout;
         // $FlowFixMe Complains noTimeout is not a TimeoutID, despite the check above
         cancelTimeout(timeoutHandle);
       }
+      // 开始进入render渲染阶段
       renderRoot(root, isYieldy);
+      // render完成后，判断当前root是否完成
+      // 若完成，则进入commit阶段
       finishedWork = root.finishedWork;
       if (finishedWork !== null) {
         // We've completed the root. Commit it.
@@ -2414,6 +2437,7 @@ function performWorkOnRoot(
     let finishedWork = root.finishedWork;
     if (finishedWork !== null) {
       // This root is already complete. We can commit it.
+      // 同上
       completeRoot(root, finishedWork, expirationTime);
     } else {
       root.finishedWork = null;
