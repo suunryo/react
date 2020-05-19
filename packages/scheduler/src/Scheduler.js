@@ -43,6 +43,7 @@ var currentEventStartTime = -1;
 var currentExpirationTime = -1;
 
 // This is set when a callback is being executed, to prevent re-entrancy.
+// flushWork的时候设置为true
 var isExecutingCallback = false;
 
 var isHostCallbackScheduled = false;
@@ -53,14 +54,19 @@ var hasNativePerformanceNow =
 function ensureHostCallbackIsScheduled() {
   if (isExecutingCallback) {
     // Don't schedule work yet; wait until the next time we yield.
+    // 说明正在调度，直接return
     return;
   }
   // Schedule the host callback using the earliest expiration in the list.
+  // 这里找到第一个任务的时间
   var expirationTime = firstCallbackNode.expirationTime;
   if (!isHostCallbackScheduled) {
+    // 说明还未开始
+    // 置为true 开始调度
     isHostCallbackScheduled = true;
   } else {
     // Cancel the existing host callback.
+    // 已经开始，取消重来
     cancelHostCallback();
   }
   requestHostCallback(flushWork, expirationTime);
@@ -102,6 +108,7 @@ function flushFirstCallback() {
 
   // A callback may return a continuation. The continuation should be scheduled
   // with the same priority and expiration as the just-finished callback.
+  // 如果callback有返回，那么继续加入回调队列
   if (typeof continuationCallback === 'function') {
     var continuationNode: CallbackNode = {
       callback: continuationCallback,
@@ -180,6 +187,7 @@ function flushImmediateWork() {
 function flushWork(didTimeout) {
   // Exit right away if we're currently paused
 
+  // debug相关?
   if (enableSchedulerDebugging && isSchedulerPaused) {
     return;
   }
@@ -190,6 +198,7 @@ function flushWork(didTimeout) {
   try {
     if (didTimeout) {
       // Flush all the expired callbacks without yielding.
+      // 超时的情况下
       while (
         firstCallbackNode !== null &&
         !(enableSchedulerDebugging && isSchedulerPaused)
@@ -213,6 +222,7 @@ function flushWork(didTimeout) {
       }
     } else {
       // Keep flushing callbacks until we run out of time in the frame.
+      // 没超时 开始循环flushFirstCallback
       if (firstCallbackNode !== null) {
         do {
           if (enableSchedulerDebugging && isSchedulerPaused) {
@@ -346,6 +356,8 @@ function unstable_scheduleCallback(callback, deprecated_options) {
     }
   }
 
+  // 创建一个节点
+  // callback就是performAsyncWork，最后flushWork的时候 会调用这个
   var newNode = {
     callback,
     priorityLevel: currentPriorityLevel,
@@ -359,9 +371,11 @@ function unstable_scheduleCallback(callback, deprecated_options) {
   // equal expiration.
   if (firstCallbackNode === null) {
     // This is the first callback in the list.
+    // 如果当前调度队列为空，则使用newNode初始创建
     firstCallbackNode = newNode.next = newNode.previous = newNode;
     ensureHostCallbackIsScheduled();
   } else {
+    // 存在调度队列，按照上面计算的时间，进行倒叙排列
     var next = null;
     var node = firstCallbackNode;
     do {
@@ -604,6 +618,7 @@ if (globalValue && globalValue._schedMock) {
   channel.port1.onmessage = function(event) {
     isMessageEventScheduled = false;
 
+    // 取值  然后重置scheduledHostCallback 和 timeoutTime
     var prevScheduledCallback = scheduledHostCallback;
     var prevTimeoutTime = timeoutTime;
     scheduledHostCallback = null;
@@ -613,26 +628,31 @@ if (globalValue && globalValue._schedMock) {
 
     var didTimeout = false;
     if (frameDeadline - currentTime <= 0) {
+      // 当前没有空余时间
       // There's no time left in this idle period. Check if the callback has
       // a timeout and whether it's been exceeded.
       if (prevTimeoutTime !== -1 && prevTimeoutTime <= currentTime) {
+        // 超时
         // Exceeded the timeout. Invoke the callback even though there's no
         // time left.
         didTimeout = true;
       } else {
         // No timeout.
+        // 未超时的情况下，继续调用rFA
         if (!isAnimationFrameScheduled) {
           // Schedule another animation callback so we retry later.
           isAnimationFrameScheduled = true;
           requestAnimationFrameWithTimeout(animationTick);
         }
         // Exit without invoking the callback.
+        // 恢复那2个变量，同时return出去
         scheduledHostCallback = prevScheduledCallback;
         timeoutTime = prevTimeoutTime;
         return;
       }
     }
 
+    // 最后，判断一下 调用这个函数，也就是flushWork
     if (prevScheduledCallback !== null) {
       isFlushingHostCallback = true;
       try {
@@ -665,9 +685,12 @@ if (globalValue && globalValue._schedMock) {
       nextFrameTime < activeFrameTime &&
       previousFrameTime < activeFrameTime
     ) {
+      // 如果连续2次时间，小于这个activeFrameTime【33】
+      // 下面会缩小这个activeFrameTime值
       if (nextFrameTime < 8) {
         // Defensive coding. We don't support higher frame rates than 120hz.
         // If the calculated frame time gets lower than 8, it is probably a bug.
+        // 翻译：防御性编码，不支持高于120hz
         nextFrameTime = 8;
       }
       // If one frame goes long, then the next one can be short to catch up.
@@ -689,6 +712,8 @@ if (globalValue && globalValue._schedMock) {
     }
   };
 
+  // 真正的requestHostCallback
+  // callback是flushWork
   requestHostCallback = function(callback, absoluteTimeout) {
     scheduledHostCallback = callback;
     timeoutTime = absoluteTimeout;
@@ -700,6 +725,7 @@ if (globalValue && globalValue._schedMock) {
       // TODO: If this rAF doesn't materialize because the browser throttles, we
       // might want to still have setTimeout trigger rIC as a backup to ensure
       // that we keep performing work.
+      // 开始调用requestAnimationFrame
       isAnimationFrameScheduled = true;
       requestAnimationFrameWithTimeout(animationTick);
     }
