@@ -255,9 +255,11 @@ if (__DEV__) {
 // Used to ensure computeUniqueAsyncExpiration is monotonically decreasing.
 let lastUniqueAsyncExpiration: number = Sync - 1;
 
+// renderRoot/ commitRoot时置为true
 let isWorking: boolean = false;
 
 // The next work in progress fiber that we're currently working on.
+// 当前工作时，用于存储下一次工作
 let nextUnitOfWork: Fiber | null = null;
 let nextRoot: FiberRoot | null = null;
 // The time at which we're currently rendering work.
@@ -654,6 +656,7 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     // the root has an effect, we need to add it to the end of the list. The
     // resulting list is the set that would belong to the root's parent, if
     // it had one; that is, all the effects in the tree including the root.
+    // 说明根节点有effect，将其添加至队列末尾
     if (finishedWork.lastEffect !== null) {
       finishedWork.lastEffect.nextEffect = finishedWork;
       firstEffect = finishedWork.firstEffect;
@@ -665,6 +668,7 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     firstEffect = finishedWork.firstEffect;
   }
 
+  // 关闭事件系统？
   prepareForCommit(root.containerInfo);
 
   // Invoke instances of getSnapshotBeforeUpdate before mutation.
@@ -745,6 +749,7 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
   }
   stopCommitHostEffectsTimer();
 
+  // 恢复事件系统？
   resetAfterCommit(root.containerInfo);
 
   // The work-in-progress tree is now the current tree. This must come after
@@ -776,6 +781,7 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
       }
     } else {
       try {
+        // 开始提交所有生命周期 比如didMount / didUpdate
         commitAllLifeCycles(root, committedExpirationTime);
       } catch (e) {
         didError = true;
@@ -800,6 +806,8 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     // after the next paint. Schedule an callback to fire them in an async
     // event. To ensure serial execution, the callback will be flushed early if
     // we enter rootWithPendingPassiveEffects commit phase before then.
+    // 翻译：如果包含passive的effect，下一次绘制之前不需要立刻执行
+    // 创建一个callback，然后通过schedule模块异步的去执行他们
     let callback = commitPassiveEffects.bind(null, root, firstEffect);
     if (enableSchedulerTracing) {
       // TODO: Avoid this extra callback by mutating the tracing ref directly,
@@ -807,14 +815,17 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
       // here because that code is still in flux.
       callback = Scheduler_tracing_wrap(callback);
     }
+    // 优先级 normal
     passiveEffectCallbackHandle = runWithPriority(NormalPriority, () => {
       return schedulePassiveEffects(callback);
     });
     passiveEffectCallback = callback;
   }
 
+  // 恢复全局变量
   isCommitting = false;
   isWorking = false;
+  // 下面3个 debug相关
   stopCommitLifeCyclesTimer();
   stopCommitTimer();
   onCommitRoot(finishedWork.stateNode);
@@ -982,6 +993,8 @@ function completeUnitOfWork(workInProgress: Fiber): Fiber | null {
       }
       // This fiber completed.
       // Remember we're completing this unit so we can find a boundary if it fails.
+
+      // 当前节点完成，执行completeWork
       nextUnitOfWork = workInProgress;
       if (enableProfilerTimer) {
         if (workInProgress.mode & ProfileMode) {
@@ -1008,6 +1021,7 @@ function completeUnitOfWork(workInProgress: Fiber): Fiber | null {
         mayReplayFailedUnitOfWork = true;
       }
       stopWorkTimer(workInProgress);
+      // 重置子节点的ExpirationTime
       resetChildExpirationTime(workInProgress, nextRenderExpirationTime);
       if (__DEV__) {
         resetCurrentFiber();
@@ -1015,6 +1029,7 @@ function completeUnitOfWork(workInProgress: Fiber): Fiber | null {
 
       if (nextUnitOfWork !== null) {
         // Completing this fiber spawned new work. Work on that next.
+        // 如果completeWork有返回【SuspenseComponent】，直接return
         return nextUnitOfWork;
       }
 
@@ -1026,6 +1041,7 @@ function completeUnitOfWork(workInProgress: Fiber): Fiber | null {
         // Append all the effects of the subtree and this fiber onto the effect
         // list of the parent. The completion order of the children affects the
         // side-effect order.
+        // 向上递归effect
         if (returnFiber.firstEffect === null) {
           returnFiber.firstEffect = workInProgress.firstEffect;
         }
@@ -1127,12 +1143,15 @@ function completeUnitOfWork(workInProgress: Fiber): Fiber | null {
 
       if (siblingFiber !== null) {
         // If there is more work to do in this returnFiber, do that next.
+        // 如果存在兄弟节点，return出去 继续调度
         return siblingFiber;
       } else if (returnFiber !== null) {
         // If there's no more work in this returnFiber. Complete the returnFiber.
+        // 找到父节点，继续循环
         workInProgress = returnFiber;
         continue;
       } else {
+        // 循环结束
         return null;
       }
     }
@@ -1166,6 +1185,7 @@ function performUnitOfWork(workInProgress: Fiber): Fiber | null {
 
   let next;
   if (enableProfilerTimer) {
+    // 记录时间
     if (workInProgress.mode & ProfileMode) {
       startProfilerTimer(workInProgress);
     }
@@ -1198,6 +1218,7 @@ function performUnitOfWork(workInProgress: Fiber): Fiber | null {
 
   if (next === null) {
     // If this doesn't spawn new work, complete the current work.
+    // 说明所有节点的任务完成，进入complete
     next = completeUnitOfWork(workInProgress);
   }
 
@@ -1209,11 +1230,13 @@ function performUnitOfWork(workInProgress: Fiber): Fiber | null {
 function workLoop(isYieldy) {
   if (!isYieldy) {
     // Flush work without yielding
+    // 同步任务，直接循环
     while (nextUnitOfWork !== null) {
       nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
     }
   } else {
     // Flush asynchronous work until there's a higher priority event
+    // 异步任务，执行循环，直到被打断
     while (nextUnitOfWork !== null && !shouldYieldToRenderer()) {
       nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
     }
@@ -1237,12 +1260,15 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
 
   // Check if we're starting from a fresh stack, or if we're resuming from
   // previously yielded work.
+  // 检查是新的任务，还是之前被中断的任务
   if (
     expirationTime !== nextRenderExpirationTime ||
     root !== nextRoot ||
     nextUnitOfWork === null
   ) {
+    // 进来了，说明是新任务
     // Reset the stack and start working from the root.
+    // 重置一些全局变量
     resetStack();
     nextRoot = root;
     nextRenderExpirationTime = expirationTime;
@@ -1307,6 +1333,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
 
   let didFatal = false;
 
+  // debug相关
   startWorkLoopTimer(nextUnitOfWork);
 
   do {
@@ -1326,6 +1353,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
 
       if (nextUnitOfWork === null) {
         // This is a fatal error.
+        // 不是预期会发生的错误
         didFatal = true;
         onUncaughtError(thrownValue);
       } else {
@@ -1358,9 +1386,11 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
             'with a reproducing case to help us find it.',
         );
 
+        // 判断出错的节点是否时根节点
         const sourceFiber: Fiber = nextUnitOfWork;
         let returnFiber = sourceFiber.return;
         if (returnFiber === null) {
+          // 如果时根节点，也是非预期内的
           // This is the root. The root could capture its own errors. However,
           // we don't know if it errors before or after we pushed the host
           // context. This information is needed to avoid a stack mismatch.
@@ -1370,6 +1400,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
           didFatal = true;
           onUncaughtError(thrownValue);
         } else {
+          // 预期内的错误
           throwException(
             root,
             returnFiber,
@@ -1391,6 +1422,8 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
   }
 
   // We're done performing work. Time to clean up.
+  // render阶段完成
+  // 代表所有的fiber节点需要执行的工作已完成
   isWorking = false;
   ReactCurrentDispatcher.current = previousDispatcher;
   resetContextDependences();
@@ -1398,6 +1431,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
 
   // Yield back to main thread.
   if (didFatal) {
+    // 存在异常，return出去
     const didCompleteRoot = false;
     stopWorkLoopTimer(interruptedBy, didCompleteRoot);
     interruptedBy = null;
@@ -1418,6 +1452,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
     // in the current frame. Yield back to the renderer. Unless we're
     // interrupted by a higher priority update, we'll continue later from where
     // we left off.
+    // 任然有未完成的任务，return出去继续执行
     const didCompleteRoot = false;
     stopWorkLoopTimer(interruptedBy, didCompleteRoot);
     interruptedBy = null;
@@ -1426,6 +1461,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
   }
 
   // We completed the whole tree.
+  // 完成全部工作
   const didCompleteRoot = true;
   stopWorkLoopTimer(interruptedBy, didCompleteRoot);
   const rootWorkInProgress = root.current.alternate;
@@ -1441,6 +1477,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
   nextRoot = null;
   interruptedBy = null;
 
+  // 处理错误
   if (nextRenderDidError) {
     // There was an error
     if (hasLowerPriorityWork(root, expirationTime)) {
@@ -1521,6 +1558,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
   }
 
   // Ready to commit.
+  // 进入commit阶段
   onComplete(root, rootWorkInProgress, expirationTime);
 }
 

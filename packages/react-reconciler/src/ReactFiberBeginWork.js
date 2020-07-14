@@ -660,6 +660,7 @@ function updateClassComponent(
   const instance = workInProgress.stateNode;
   let shouldUpdate;
   if (instance === null) {
+    // 没有对应的dom节点，初始化mount
     if (current !== null) {
       // An class component without an instance only mounts if it suspended
       // inside a non- concurrent tree, in an inconsistent state. We want to
@@ -686,6 +687,7 @@ function updateClassComponent(
     shouldUpdate = true;
   } else if (current === null) {
     // In a resume, we'll already have an instance we can reuse.
+    // 重新加载，之前渲染过的组件
     shouldUpdate = resumeMountClassInstance(
       workInProgress,
       Component,
@@ -693,6 +695,7 @@ function updateClassComponent(
       renderExpirationTime,
     );
   } else {
+    // 更新
     shouldUpdate = updateClassInstance(
       current,
       workInProgress,
@@ -1867,6 +1870,7 @@ function bailoutOnAlreadyFinishedWork(
 
   if (current !== null) {
     // Reuse previous context list
+    // 复用上一个上下文列表??
     workInProgress.contextDependencies = current.contextDependencies;
   }
 
@@ -1879,12 +1883,14 @@ function bailoutOnAlreadyFinishedWork(
   const childExpirationTime = workInProgress.childExpirationTime;
   if (childExpirationTime < renderExpirationTime) {
     // The children don't have any work either. We can skip them.
+    // 子节点没有任何工作， 跳过，并且代表next为null，可以进行completeUnitOfWork
     // TODO: Once we add back resuming, we should check if the children are
     // a work-in-progress set. If so, we need to transfer their effects.
     return null;
   } else {
     // This fiber doesn't have work, but its subtree does. Clone the child
     // fibers and continue.
+    // 否则，返回该fiber的子节点
     cloneChildFibers(current, workInProgress);
     return workInProgress.child;
   }
@@ -1902,10 +1908,13 @@ function beginWork(
     const newProps = workInProgress.pendingProps;
 
     if (oldProps !== newProps || hasLegacyContextChanged()) {
+      // hasLegacyContextChanged这个判断是用来判断context
       // If props or context changed, mark the fiber as having performed work.
       // This may be unset if the props are determined to be equal later (memo).
+      // 如果这个props前后相等，说明已完成
       didReceiveUpdate = true;
     } else if (updateExpirationTime < renderExpirationTime) {
+      // 超时判断，为组件执行一些操作
       didReceiveUpdate = false;
       // This fiber does not have any pending work. Bailout without entering
       // the begin phase. There's still some bookkeeping we that needs to be done
